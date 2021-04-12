@@ -1,0 +1,162 @@
+---
+title: "R Conference Events Explorer"
+author: "Meet Bhatnagar"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+    social: [ "twitter", "facebook", "menu"]
+    source_code: embed
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(dplyr)
+library(crosstalk)
+library(DT)
+library(leaflet)
+library(plotly)
+
+event_data <- readRDS("R_Events.rds")
+event_data <- bind_rows(event_data, .id = "column_label")
+filter_event_data <- event_data[!is.na(event_data$venue_city),]
+sd <- SharedData$new(filter_event_data)
+
+total_events <- length(unique(event_data$id))
+total_rsvp <- sum(event_data$yes_rsvp_count)
+# table(event_data$venue_country)
+```
+
+# Interactives 
+
+## Row
+
+### Total R Conference Events
+
+```{r}
+valueBox(total_events, icon = "fa-calendar-alt", color = "orange")
+```
+
+### Total RSVP Count
+
+```{r}
+valueBox(total_rsvp, icon = "fa-thumbs-up", color = "green")
+```
+
+## Row
+
+### Daily Events Count
+
+```{r}
+daily_count <- as.data.frame(table(event_data$local_date))
+plot1 <- daily_count %>%
+  plot_ly(x = ~Var1,
+          y = ~Freq,
+          color = "purple",
+          type = 'bar') %>%
+  layout(xaxis = list(title = "Date"), yaxis = list(title = "Number of Events", 
+                                                    range = c(0, max(daily_count$Freq))))
+plot1
+```
+
+### Location Vs Event Count
+
+```{r}
+loc_count <- as.data.frame(table(event_data$venue_city))
+plot2 <- loc_count %>%
+  plot_ly(x = ~Freq[-1],
+          y = ~Var1[-1],
+          marker = list(color = 'rgba(38, 24, 74, 0.8)',
+                      line = list(color = 'rgb(248, 248, 249)', width = 1)),
+          type = 'bar', orientation = 'h') %>%
+  layout(xaxis = list(title = "Number of Events"), yaxis = list(title = "Location of Events"))
+plot2
+```
+
+# World Map - Events {data-orientation=columns} 
+
+## Column {data-width = 400}
+
+### Map Filters
+
+```{r}
+filter_select(
+  id = "venue_city",
+  label = "City name",
+  sharedData = sd,
+  group = ~venue_city
+)
+
+filter_checkbox(
+  id = "venue_country",
+  label = "Country name",
+  sharedData = sd,
+  group = ~venue_country,
+  allLevels = TRUE,
+  inline = FALSE,
+  columns = 4
+)
+
+```
+
+### Datatable
+
+```{r}
+datatable(filter_event_data[,-1], rownames = FALSE, extensions = 'Scroller', 
+          options = list(scrollY = 200, scroller = TRUE, columnDefs = list(list(className = 'dt-left', targets = 0:3))))
+
+```
+
+## Column {data-width = 600}
+
+### Interactive map
+
+```{r}
+sd %>% 
+  leaflet::leaflet() %>%
+  leaflet::addProviderTiles(providers$OpenStreetMap) %>% 
+  leaflet::addAwesomeMarkers(
+    ~filter_event_data$venue_lon, ~filter_event_data$venue_lat,
+    popup = ~paste0(
+      "<h5>", filter_event_data$name, "</h5>",
+      
+      "<table style='width:100%'>",
+      
+      "<tr>",
+      "<th>ID</th>",
+      "<th>", filter_event_data$id, "</th>",
+      "</tr>",
+      
+      "<tr>",
+      "<tr>",
+      "<th>Date</th>",
+      "<th>", filter_event_data$local_date, "</th>",
+      "</tr>",
+      
+      "<tr>",
+      "<tr>",
+      "<th>RSVP Count </th>",
+      "<th>", filter_event_data$yes_rsvp_count, "</th>",
+      "</tr>",
+      
+      "<tr>",
+      "<tr>",
+      "<th>Location</th>",
+      "<th>", filter_event_data$venue_city, ", ", filter_event_data$venue_country, "</th>",
+      "</tr>",
+      
+      "<tr>",
+      "<tr>",
+      "<th>Coordinates </th>",
+      "<th>", filter_event_data$venue_lat, ", ", filter_event_data$venue_lon, "</th>",
+      "</tr>"
+    ),  # end popup()
+    icon = awesomeIcons(
+      library = "ion",
+      icon = "ion-android-star-outline",
+      iconColor = "white",
+      markerColor = "red"
+    )
+  ) %>%   # end addAwesomeMarkers()
+  leaflet::addMeasure()
+```
